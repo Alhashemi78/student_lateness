@@ -7,7 +7,32 @@ const size=n=>(n/1024).toLocaleString('ar-BH',{maximumFractionDigits:0})+' كي�
 const date=t=>new Date(t).toLocaleString('ar-BH',{timeZone:'Asia/Bahrain'});
 function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),30000);}
 async function storage(action,value){const d=await new Promise((resolve,reject)=>{const r=indexedDB.open('school-image-test',1);r.onupgradeneeded=()=>r.result.createObjectStore('pending');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});try{return await new Promise((resolve,reject)=>{const tx=d.transaction('pending',action==='get'?'readonly':'readwrite'),s=tx.objectStore('pending');const req=action==='get'?s.get(user.id):action==='put'?s.put(value,user.id):s.delete(user.id);let result;req.onsuccess=()=>result=req.result;tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);});}finally{d.close();}}
-async function compress(file){if(!file.type.startsWith('image/')||file.type==='image/svg+xml')throw Error('اختر صورة JPG أو PNG أو WebP.');if(file.size>20*1024*1024)throw Error('حجم الصورة أكبر من 20 ميجابايت.');const src=URL.createObjectURL(file);try{const img=new Image();img.src=src;await img.decode();const factor=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.naturalWidth*factor));canvas.height=Math.max(1,Math.round(img.naturalHeight*factor));const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);let blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.85));if(!blob||blob.size>2097152)throw Error('تعذر تقليل الصورة إلى الحجم المسموح. اختر صورة أصغر.');return{blob,original:file.size};}finally{URL.revokeObjectURL(src);}}
+async function compress(file) {
+  if (!/^image\/(jpeg|png|webp|bmp)$/.test(file.type)) throw Error('اختر صورة JPG أو PNG أو WebP أو BMP.');
+  if (file.size > 20 * 1024 * 1024) throw Error('حجم الصورة أكبر من 20 ميجابايت.');
+  const compressed = await imageCompression(file, {
+    maxSizeMB: 500 / 1024,
+    maxWidthOrHeight: 1024,
+    initialQuality: 0.85,
+    maxIteration: 20,
+    useWebWorker: true,
+    fileType: 'image/jpeg',
+    preserveExif: false,
+    libURL: 'https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js'
+  });
+  let uploadFile = compressed;
+  if (file.type === 'image/jpeg' && file.size < compressed.size) {
+    const src = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      if (Math.max(img.naturalWidth, img.naturalHeight) <= 1024) uploadFile = file;
+    } finally { URL.revokeObjectURL(src); }
+  }
+  if (!uploadFile || uploadFile.size > 500 * 1024) throw Error('تعذر تقليل الصورة إلى 500 كيلوبايت. اختر صورة أصغر.');
+  return { blob: uploadFile, original: file.size };
+}
 async function pick(file){if(!file)return;if(busy)return;try{say('جاري تجهيز الصورة…');selected=await compress(file);if(previewURL)URL.revokeObjectURL(previewURL);previewURL=URL.createObjectURL(selected.blob);const img=new Image();img.src=previewURL;img.alt='معاينة الصورة المختارة';$('preview').replaceChildren(img);const delta=Math.round((1-selected.blob.size/selected.original)*100);$('sizes').textContent='الأصل: '+size(selected.original)+' • جاهزة للرفع: '+size(selected.blob.size)+(delta>0?' • تقليل '+delta+'٪':'');say('الصورة جاهزة.');}catch(e){say(e.message);}}
 function render(){ $('count').textContent=records.length;const area=$('records');area.replaceChildren();for(const r of records){const c=document.createElement('article');c.className='record';const img=new Image();img.src=r.image_url;img.alt=r.name;img.loading='lazy';const section=document.createElement('section'),title=document.createElement('h3'),d=document.createElement('p'),a=document.createElement('a'),btn=document.createElement('button');title.textContent=r.name;d.className='muted';d.textContent=date(r.created_at);a.href=r.image_url;a.target='_blank';a.rel='noopener';a.textContent='فتح الصورة ↗';btn.textContent='نسخ الرابط';btn.onclick=async()=>{try{await navigator.clipboard.writeText(r.image_url);say('تم نسخ رابط الصورة.');}catch{say('افتح الصورة وانسخ الرابط من المتصفح.');}};section.append(title,d,a,document.createElement('br'),btn);c.append(img,section);area.append(c);}if(!records.length){const p=document.createElement('p');p.className='muted';p.textContent=user?'لا توجد سجلات محفوظة بعد.':'سجّل الدخول لعرض سجلاتك.';area.append(p);}}
 async function load(){if(!user){records=[];render();return;}const{data,error}=await db.from('school_image_records').select('*').order('created_at',{ascending:false});if(error){say('تعذر جلب السجلات: '+error.message);return;}records=data||[];render();}
