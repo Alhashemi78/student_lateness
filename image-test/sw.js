@@ -1,0 +1,5 @@
+// Only the public application shell is cached. Auth, photos and APIs are never cached.
+const CACHE='school-image-shell-v1';
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./','./app.js','./icon.svg','./manifest.json'])));self.skipWaiting();});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('school-image-shell-')&&k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
+self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==self.location.origin||!['/student_lateness/image-test/','/student_lateness/image-test/index.html','/student_lateness/image-test/app.js','/student_lateness/image-test/icon.svg','/student_lateness/image-test/manifest.json'].includes(u.pathname))return;e.respondWith(fetch(e.request).then(r=>{if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));}return r;}).catch(()=>caches.match(e.request)));});
