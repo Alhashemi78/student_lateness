@@ -46,10 +46,12 @@ create policy school_events_insert on public.school_events for insert to authent
 );
 create policy school_events_update on public.school_events for update to authenticated using (
  exists (select 1 from public.school_event_access where email=lower((select auth.jwt()->>'email')) and role='admin')
- or (owner_id=(select auth.uid()) and status='pending')
+ or (owner_id=(select auth.uid()) and status in ('pending','rejected') and exists (
+ select 1 from public.school_event_access where email=lower((select auth.jwt()->>'email'))))
 ) with check (
  exists (select 1 from public.school_event_access where email=lower((select auth.jwt()->>'email')) and role='admin')
- or (owner_id=(select auth.uid()) and status='pending' and review_note='')
+ or (owner_id=(select auth.uid()) and status='pending' and review_note='' and exists (
+ select 1 from public.school_event_access where email=lower((select auth.jwt()->>'email'))))
 );
 create policy school_events_delete on public.school_events for delete to authenticated using (
  exists (select 1 from public.school_event_access where email=lower((select auth.jwt()->>'email')) and role='admin')
@@ -66,7 +68,8 @@ begin
    if new.owner_id is distinct from old.owner_id or new.created_at is distinct from old.created_at then
      raise exception 'لا يمكن تغيير صاحب السجل أو وقت إنشائه';
    end if;
-   if not admin_user and (new.status is distinct from old.status or new.review_note is distinct from old.review_note) then
+   if not admin_user and (new.status is distinct from old.status or new.review_note is distinct from old.review_note)
+      and not (old.owner_id=auth.uid() and old.status='rejected' and new.status='pending' and new.review_note='') then
      raise exception 'اعتماد الفعاليات مخصص للإدارة';
    end if;
  end if;
