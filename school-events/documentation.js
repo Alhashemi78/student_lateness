@@ -66,8 +66,18 @@ el('docForm').addEventListener('submit',async ev=>{
 el('docRefresh').onclick=refreshDocs;
 el('docList').addEventListener('click',async ev=>{
  const b=ev.target.closest('[data-doc-review]');if(!b||!isAdmin()||!session)return;
- const status=b.dataset.docReview, note=status==='rejected'?prompt('سبب الرفض:'):'';if(status==='rejected'&&!note?.trim())return;
- if(!confirm(status==='approved'?'اعتماد هذا التوثيق ونشره للمستخدمين المصرح لهم؟':'رفض التوثيق؟'))return;
+ const status=b.dataset.docReview;
+ const dialog=document.createElement('dialog');dialog.className='card';dialog.setAttribute('aria-label','مراجعة توثيق الفعالية');
+ const form=document.createElement('form');form.method='dialog';
+ const heading=document.createElement('h3');heading.textContent=status==='approved'?'اعتماد توثيق الفعالية':'رفض توثيق الفعالية';form.append(heading);
+ const detail=document.createElement('p');detail.textContent=status==='approved'?'سيظهر التوثيق والصورة للمستخدمين المصرح لهم بعد الاعتماد.':'اكتب سبب رفض التوثيق.';form.append(detail);
+ const reason=document.createElement('textarea');reason.placeholder='سبب الرفض';reason.rows=3;reason.maxLength=1000;reason.required=status==='rejected';if(status==='rejected')form.append(reason);
+ const actions=document.createElement('div');actions.className='actions';
+ const cancel=document.createElement('button');cancel.type='button';cancel.className='btn outline';cancel.textContent='إلغاء';cancel.onclick=()=>dialog.close();
+ const accept=document.createElement('button');accept.type='submit';accept.className='btn primary';accept.textContent='تأكيد القرار';actions.append(cancel,accept);form.append(actions);dialog.append(form);document.body.append(dialog);
+ const accepted=await new Promise(resolve=>{form.addEventListener('submit',ev=>{ev.preventDefault();if(status==='rejected'&&!reason.value.trim())return;resolve(true);dialog.close();});dialog.addEventListener('close',()=>resolve(false),{once:true});dialog.showModal();});
+ const note=status==='rejected'?reason.value.trim():'';
+ dialog.remove();if(!accepted)return;
  const {error}=await db.from('school_event_documentation').update({approval_status:status,review_note:note||''}).eq('event_id',b.dataset.docId);
  if(error)el('docFeedback').textContent=errorText(error);else await refreshDocs();
 });
