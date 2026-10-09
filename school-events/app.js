@@ -60,7 +60,7 @@ $('rosterFile').onchange=async ev=>{
  pendingRoster=null;$('rosterApply').hidden=true;$('rosterPreview').textContent='';
  if(!session||access?.role!=='admin')return toast('هذه العملية مخصصة للإدارة فقط.');
  const file=ev.target.files?.[0];if(!file)return;
- if(!/\\.xlsx$/i.test(file.name)||file.size>2*1024*1024)return toast('اختر ملف XLSX لا يتجاوز 2 ميغابايت.');
+ if(!/\.xlsx$/i.test(file.name)||file.size>2*1024*1024)return toast('اختر ملف XLSX لا يتجاوز 2 ميغابايت.');
  try{
   const wb=new ExcelJS.Workbook();await wb.xlsx.load(await file.arrayBuffer());
   const ws=wb.worksheets[0];if(!ws)throw Error('ملف Excel لا يحتوي على ورقة بيانات.');
@@ -70,7 +70,7 @@ $('rosterFile').onchange=async ev=>{
   const rows=[],seen=new Set();
   ws.eachRow((row,i)=>{if(i===1)return;const name=value(row.getCell(1)),email=value(row.getCell(2)).toLowerCase(),dept=value(row.getCell(3));
    if(!name&&!email&&!dept)return;
-   if(!name||!dept||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||email.endsWith('.invalid'))throw Error('بيانات غير مكتملة أو بريد تجريبي في الصف '+i);
+   if(!name||!dept||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.endsWith('.invalid'))throw Error('بيانات غير مكتملة أو بريد تجريبي في الصف '+i);
    if(seen.has(email))throw Error('بريد مكرر في الصف '+i);
    seen.add(email);rows.push({email,display_name:name,department:dept});
   });
