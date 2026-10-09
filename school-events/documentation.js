@@ -125,7 +125,7 @@ el('exportAchievementsPdf').addEventListener('click',async()=>{
   const pageW=210,pageH=297,margin=10,usableW=pageW-2*margin,usableH=pageH-2*margin;
   const pagePx=Math.floor(canvas.width*usableH/usableW);let page=0;
   for(let y=0;y<canvas.height;y+=pagePx){const slice=document.createElement('canvas');slice.width=canvas.width;slice.height=Math.min(pagePx,canvas.height-y);slice.getContext('2d').drawImage(canvas,0,y,canvas.width,slice.height,0,0,canvas.width,slice.height);if(page++)pdf.addPage();pdf.addImage(slice.toDataURL('image/jpeg',0.87),'JPEG',margin,margin,usableW,slice.height*usableW/slice.width);}
-  pdf.save('توثيق-الإنجازات-المعتمدة.pdf');status.textContent='تم تجهيز تقرير PDF بالصور والتواريخ.';
+  const blob=pdf.output('blob'),url=URL.createObjectURL(blob);status.replaceChildren();const link=document.createElement('a');link.href=url;link.download='توثيق-الإنجازات-المعتمدة.pdf';link.target='_blank';link.rel='noopener';link.textContent='اضغط هنا لتنزيل تقرير PDF';link.style.cssText='display:inline-block;padding:12px 16px;border-radius:10px;background:#173f49;color:white;font-weight:bold;text-decoration:none';status.append(link);link.click();
  }catch(err){status.textContent='تعذر تصدير التقرير: '+errorText(err);}
  finally{host.remove();button.disabled=false;}
 });
