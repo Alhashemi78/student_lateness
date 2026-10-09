@@ -27,8 +27,16 @@ async function downloadPeriod(start,end,heading){
   await document.fonts.ready;
   const canvas=await html2canvas(host.firstElementChild,{scale:1.5,backgroundColor:'#fff',useCORS:false});
   const pdf=new window.jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
-  const pageW=297,pageH=210,margin=8,imgW=pageW-margin*2,imgH=canvas.height*imgW/canvas.width;
-  let used=0;while(used<imgH){if(used)pdf.addPage();pdf.addImage(canvas.toDataURL('image/jpeg',0.9),'JPEG',margin,margin-used,imgW,imgH);used+=pageH-margin*2;}
+  const pageW=297,pageH=210,margin=8,imgW=pageW-margin*2,printH=pageH-margin*2;
+  const sliceHeight=Math.floor(canvas.width*printH/imgW);
+  let page=0;
+  for(let y=0;y<canvas.height;y+=sliceHeight){
+   const h=Math.min(sliceHeight,canvas.height-y);
+   const part=document.createElement('canvas');part.width=canvas.width;part.height=h;
+   part.getContext('2d').drawImage(canvas,0,y,canvas.width,h,0,0,canvas.width,h);
+   if(page++)pdf.addPage();
+   pdf.addImage(part.toDataURL('image/jpeg',0.92),'JPEG',margin,margin,imgW,h*imgW/canvas.width);
+  }
   pdf.save('تقرير_'+start+'_إلى_'+end+'.pdf');
  }catch(e){alert('تعذر إنشاء PDF: '+e.message)}finally{host.remove();if(progress)progress.hidden=true;}
 }
