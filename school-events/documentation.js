@@ -93,15 +93,19 @@ el('exportAchievementsPdf').addEventListener('click',async()=>{
   const ordered=approved.slice().sort((a,b)=>(events.find(e=>e.id===a.event_id)?.start_date||'').localeCompare(events.find(e=>e.id===b.event_id)?.start_date||''));
   for(const [i,d] of ordered.entries()){
    const e=events.find(x=>x.id===d.event_id);const section=document.createElement('section');section.style.cssText='border:1px solid #d3e1e1;border-radius:12px;padding:18px;margin:20px 0;break-inside:avoid';
-   const title=document.createElement('h2');title.textContent=(i+1)+'. '+e.title;title.style.margin='0 0 8px';section.append(title);
-   for(const line of ['تاريخ الفعالية: '+dateLabel(e.start_date),'القسم: '+(e.department||'—'),'المسؤول: '+(e.employee||'—'),'عدد المشاركات الطلابية: '+d.student_participations,'وصف التنفيذ والنتائج: '+d.description]){const p=document.createElement('p');p.textContent=line;p.style.cssText='margin:8px 0;white-space:pre-wrap';section.append(p);}
+   const layout=document.createElement('div');layout.style.cssText='display:flex;flex-direction:row;align-items:flex-start;gap:18px;min-height:170px;direction:rtl';
+   const details=document.createElement('div');details.style.cssText='flex:1;min-width:0;text-align:right';
+   const title=document.createElement('h2');title.textContent=(i+1)+'. '+e.title;title.style.cssText='margin:0 0 9px;font-size:20px';details.append(title);
+   for(const line of ['تاريخ الفعالية: '+dateLabel(e.start_date),'القسم: '+(e.department||'—'),'المسؤول: '+(e.employee||'—'),'عدد المشاركات الطلابية: '+d.student_participations,'وصف التنفيذ والنتائج: '+d.description]){const p=document.createElement('p');p.textContent=line;p.style.cssText='margin:7px 0;white-space:pre-wrap;font-size:15px;line-height:1.65';details.append(p);}
+   layout.append(details);
    const {data:photos,error:photoError}=await db.from('school_event_photos').select('storage_path').eq('event_id',d.event_id).order('created_at',{ascending:false}).limit(1);
    if(photoError)throw photoError;
    if(photos?.length){const signed=await db.storage.from('school-event-private').createSignedUrl(photos[0].storage_path,300);if(signed.error)throw signed.error;
     const resp=await fetch(signed.data.signedUrl);if(!resp.ok)throw Error('تعذر تحميل صورة '+e.title);
-    const blob=await resp.blob();const src=URL.createObjectURL(blob);const img=document.createElement('img');img.src=src;img.style.cssText='display:block;max-width:100%;max-height:380px;object-fit:contain;margin:14px auto;border-radius:9px';section.append(img);
+    const blob=await resp.blob();const src=URL.createObjectURL(blob);const img=document.createElement('img');img.src=src;img.alt='صورة '+e.title;img.style.cssText='width:195px;height:155px;object-fit:contain;background:#f3f7f7;border:1px solid #d3e1e1;border-radius:10px;flex:none';layout.append(img);
     await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('تعذر قراءة صورة '+e.title));});URL.revokeObjectURL(src);
-   }host.append(section);
+   }
+   section.append(layout);host.append(section);
   }
   const footer=document.createElement('p');footer.textContent='إعداد المدير المساعد: زياد الهاشمي';footer.style.cssText='text-align:center;font-weight:bold;margin:30px 0';host.append(footer);
   await document.fonts.ready;
