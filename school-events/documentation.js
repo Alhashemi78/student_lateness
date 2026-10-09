@@ -11,6 +11,27 @@ async function refreshDocs(){
  const {data,error}=await db.from('school_event_documentation').select('event_id,owner_id,description,student_participations,approval_status,review_note,created_at').order('created_at',{ascending:false});
  if(error){el('docList').textContent=errorText(error);return;}
  docs=data||[];
+ const gallery=el('achievementGallery');
+ const approved=(data||[]).filter(d=>d.approval_status==='approved');
+ const {data:photos,error:photoError}=await db.from('school_event_photos').select('event_id,storage_path').order('created_at',{ascending:false});
+ const photosByEvent=new Map();
+ for(const p of photos||[])if(!photosByEvent.has(p.event_id))photosByEvent.set(p.event_id,p.storage_path);
+ gallery.replaceChildren();
+ if(photoError){gallery.textContent='تعذر تحميل صور الإنجازات: '+errorText(photoError);}
+ else if(!approved.length){gallery.textContent='لم تُعتمد إنجازات بعد.';}
+ else for(const d of approved){
+  const e=events.find(x=>x.id===d.event_id);
+  const card=document.createElement('article');card.className='card';
+  const title=document.createElement('h3');title.textContent=e?.title||'فعالية مدرسية';card.append(title);
+  const desc=document.createElement('p');desc.textContent=d.description;card.append(desc);
+  const count=document.createElement('small');count.textContent='المشاركات الطلابية: '+d.student_participations;card.append(count);
+  const path=photosByEvent.get(d.event_id);
+  if(path){const signed=await db.storage.from('school-event-private').createSignedUrl(path,120);
+   if(!signed.error){const img=document.createElement('img');img.src=signed.data.signedUrl;img.alt='صورة توثيق '+title.textContent;img.loading='lazy';img.style.cssText='width:100%;max-height:260px;object-fit:cover;border-radius:12px;margin-top:12px';card.prepend(img);}
+  }
+  gallery.append(card);
+ }
+
  el('docList').innerHTML=docs.length?docs.map(d=>{
   const e=events.find(x=>x.id===d.event_id);
   return '<article class="event-card"><div><h3>'+safe(e?.title||'فعالية')+'</h3><p>'+safe(d.description)+'</p><small>المشاركات الطلابية: '+Number(d.student_participations)+' · '+safe(({pending:'قيد المراجعة',approved:'معتمد',rejected:'مرفوض'})[d.approval_status])+'</small>'+(d.review_note?'<p>'+safe(d.review_note)+'</p>':'')+'</div>'+(isAdmin()&&d.approval_status==='pending'?'<div class="actions"><button type="button" class="btn primary" data-doc-review="approved" data-doc-id="'+safe(d.event_id)+'">اعتماد</button><button type="button" class="btn outline" data-doc-review="rejected" data-doc-id="'+safe(d.event_id)+'">رفض</button></div>':'')+'</article>';
@@ -29,6 +50,17 @@ el('docForm').addEventListener('submit',async ev=>{
  if(existing)result=await db.from('school_event_documentation').update({description:payload.description,student_participations:payload.student_participations,approval_status:'pending',review_note:''}).eq('event_id',eventId);
  else result=await db.from('school_event_documentation').insert(payload);
  if(result.error)return el('docFeedback').textContent=errorText(result.error);
+
+ const image=el('docPhoto').files?.[0];
+ if(image){
+  if(!['image/jpeg','image/png','image/webp'].includes(image.type)||image.size>2097152||image.size<1)return el('docFeedback').textContent='حُفظ التوثيق، لكن الصورة يجب أن تكون JPG أو PNG أو WebP وأقل من 2 ميغابايت.';
+  const ext=image.type==='image/png'?'png':image.type==='image/webp'?'webp':'jpg';
+  const path=eventId+'/'+session.user.id+'/'+crypto.randomUUID()+'.'+ext;
+  const uploaded=await db.storage.from('school-event-private').upload(path,image,{contentType:image.type,upsert:false});
+  if(uploaded.error)return el('docFeedback').textContent='حُفظ التوثيق، لكن رفع الصورة لم ينجح: '+errorText(uploaded.error);
+  const saved=await db.from('school_event_photos').insert({event_id:eventId,owner_id:session.user.id,storage_path:path});
+  if(saved.error)return el('docFeedback').textContent='رفعت الصورة لكن تعذر ربطها بالفعالية: '+errorText(saved.error);
+ }
  el('docFeedback').textContent='تم حفظ التوثيق وإرساله للمراجعة.';el('docForm').reset();await refreshDocs();
 });
 el('docRefresh').onclick=refreshDocs;
