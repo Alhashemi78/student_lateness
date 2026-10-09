@@ -47,3 +47,19 @@
  #sampleGallery .two-col{gap:14px}
  #sampleGallery img{height:160px!important}
 }
+
+/* Compact, data-first periodic reports */
+.periodic-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.periodic-toolbar h2{margin-bottom:4px}
+.periodic-toolbar .btn{flex:none!important;padding:8px 14px;font-size:13px}
+.periodic-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+.periodic-overview-item{border-radius:13px;background:#f1f7f6;padding:15px 10px;display:flex;flex-direction:column;gap:3px;text-align:center}
+.periodic-overview-item span{font-size:12px;color:#536d70}.periodic-overview-item strong{font-size:28px;color:#123e49}.periodic-overview-item small{font-size:11px;color:#536d70}
+.periodic-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.periodic-panels>.card{min-width:0}
+.periodic-range{font-size:13px;color:#557078;margin:8px 0 13px}
+.periodic-stats{display:flex;gap:10px;margin:12px 0}.periodic-stats>div{flex:1;background:#f4f8f8;border-radius:11px;padding:11px;display:flex;align-items:center;gap:8px}.periodic-stats strong{font-size:23px}.periodic-stats small{font-size:12px;color:#617579}
+.periodic-event{display:grid;grid-template-columns:minmax(95px,auto) minmax(0,1fr) auto;gap:9px;align-items:center;border-bottom:1px solid #e7eeee;padding:12px 0;font-size:13px}
+.periodic-event strong{font-size:13px;overflow-wrap:anywhere}.periodic-event small,.periodic-date{font-size:11px;color:#637b7d}
+.periodic-month{border-bottom:1px solid #e5eded;padding:9px 0}.periodic-month summary{cursor:pointer;display:flex;justify-content:space-between;gap:12px;font-weight:700;padding:9px 3px}.periodic-month summary span:last-child{font-weight:400;color:#567579;font-size:12px}
+.periodic-archive-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0}.periodic-archive-row span{font-size:13px}
+.periodic-pdf-link{display:inline-flex;align-items:center;justify-content:center;flex:none;border:1px solid #d8a68e;background:#fff6f1;color:#914d30;border-radius:9px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}
+@media(max-width:800px){.periodic-panels{grid-template-columns:1fr}.periodic-event{grid-template-columns:1fr auto}.periodic-event .periodic-date{grid-column:1/-1}.periodic-overview-item{padding:11px 5px}.periodic-overview-item strong{font-size:23px}}
