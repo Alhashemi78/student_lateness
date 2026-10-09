@@ -100,10 +100,17 @@ el('exportAchievementsPdf').addEventListener('click',async()=>{
    layout.append(details);
    const {data:photos,error:photoError}=await db.from('school_event_photos').select('storage_path').eq('event_id',d.event_id).order('created_at',{ascending:false}).limit(1);
    if(photoError)throw photoError;
-   if(photos?.length){const signed=await db.storage.from('school-event-private').createSignedUrl(photos[0].storage_path,300);if(signed.error)throw signed.error;
-    const resp=await fetch(signed.data.signedUrl);if(!resp.ok)throw Error('تعذر تحميل صورة '+e.title);
-    const blob=await resp.blob();const src=URL.createObjectURL(blob);const img=document.createElement('img');img.src=src;img.alt='صورة '+e.title;img.style.cssText='width:195px;height:155px;object-fit:contain;background:#f3f7f7;border:1px solid #d3e1e1;border-radius:10px;flex:none';layout.append(img);
-    await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('تعذر قراءة صورة '+e.title));});URL.revokeObjectURL(src);
+   if(photos?.length){
+    try{
+     const signed=await db.storage.from('school-event-private').createSignedUrl(photos[0].storage_path,300);
+     if(signed.error)throw signed.error;
+     const resp=await fetch(signed.data.signedUrl);if(!resp.ok)throw Error('تعذر تحميل الصورة');
+     const blob=await resp.blob();if(!blob.type.startsWith('image/'))throw Error('ملف الصورة غير صالح');
+     const src=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('تعذر قراءة الصورة'));reader.readAsDataURL(blob);});
+     const img=document.createElement('img');img.alt='صورة '+e.title;img.style.cssText='width:195px;height:155px;object-fit:contain;background:#f3f7f7;border:1px solid #d3e1e1;border-radius:10px;flex:none';
+     await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('تعذر تحميل الصورة'));img.src=src;});
+     layout.append(img);
+    }catch(imageError){console.warn('تعذر إدراج صورة الفعالية في PDF',e.id,imageError);}
    }
    section.append(layout);host.append(section);
   }
