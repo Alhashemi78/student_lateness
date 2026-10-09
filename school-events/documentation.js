@@ -32,10 +32,11 @@ async function refreshDocs(){
   gallery.append(card);
  }
 
- el('docList').innerHTML=docs.length?docs.map(d=>{
+ const pendingDocs=docs.filter(d=>d.approval_status!=='approved');
+ el('docList').innerHTML=pendingDocs.length?pendingDocs.map(d=>{
   const e=events.find(x=>x.id===d.event_id);
   return '<article class="event-card"><div><h3>'+safe(e?.title||'فعالية')+'</h3><p>'+safe(d.description)+'</p><small>المشاركات الطلابية: '+Number(d.student_participations)+' · '+safe(({pending:'قيد المراجعة',approved:'معتمد',rejected:'مرفوض'})[d.approval_status])+'</small>'+(d.review_note?'<p>'+safe(d.review_note)+'</p>':'')+'</div>'+(isAdmin()&&d.approval_status==='pending'?'<div class="actions"><button type="button" class="btn primary" data-doc-review="approved" data-doc-id="'+safe(d.event_id)+'">اعتماد</button><button type="button" class="btn outline" data-doc-review="rejected" data-doc-id="'+safe(d.event_id)+'">رفض</button></div>':'')+'</article>';
- }).join(''):'<p class="muted">لا يوجد توثيق بعد.</p>';
+ }).join(''):'<p class="muted">لا توجد توثيقات قيد المراجعة أو مرفوضة. التوثيقات المعتمدة تظهر أعلاه مع صورها.</p>';
 }
 el('docForm').addEventListener('submit',async ev=>{
  ev.preventDefault();
