@@ -44,7 +44,20 @@ el('docForm').addEventListener('submit',async ev=>{
  const eventId=el('docEvent').value,evt=events.find(e=>e.id===eventId);
  if(!evt||evt.status!=='approved'||(!isAdmin()&&evt.owner_id!==session.user.id))return el('docFeedback').textContent='لا تملك صلاحية توثيق هذه الفعالية.';
  const existing=docs.find(d=>d.event_id===eventId);
- if(existing?.approval_status==='approved')return el('docFeedback').textContent='التوثيق معتمد؛ يتطلب تغييره موافقة الإدارة.';
+ if(existing?.approval_status==='approved'){
+  const image=el('docPhoto').files?.[0];
+  if(!image)return el('docFeedback').textContent='التوثيق معتمد بالفعل. اختر صورة لإضافتها إلى نفس الفعالية، دون إرسال توثيق جديد.';
+  if(evt.owner_id!==session.user.id)return el('docFeedback').textContent='إرفاق صورة لتوثيق معتمد متاح لصاحب الفعالية فقط حاليًا.';
+  if(!['image/jpeg','image/png','image/webp'].includes(image.type)||image.size>2097152||image.size<1)return el('docFeedback').textContent='اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 2 ميغابايت.';
+  el('docFeedback').textContent='جارٍ إرفاق الصورة بالتوثيق المعتمد...';
+  const ext=image.type==='image/png'?'png':image.type==='image/webp'?'webp':'jpg';
+  const path=eventId+'/'+session.user.id+'/'+crypto.randomUUID()+'.'+ext;
+  const uploaded=await db.storage.from('school-event-private').upload(path,image,{contentType:image.type,upsert:false});
+  if(uploaded.error)return el('docFeedback').textContent='تعذر رفع الصورة: '+errorText(uploaded.error);
+  const saved=await db.from('school_event_photos').insert({event_id:eventId,owner_id:session.user.id,storage_path:path});
+  if(saved.error){await db.storage.from('school-event-private').remove([path]);return el('docFeedback').textContent='تعذر ربط الصورة بالتوثيق: '+errorText(saved.error);}
+  el('docFeedback').textContent='تم إرفاق الصورة بالتوثيق المعتمد نفسه دون إنشاء نسخة جديدة.';el('docForm').reset();await refreshDocs();return;
+ }
  const payload={event_id:eventId,owner_id:evt.owner_id,description:el('docDescription').value.trim(),student_participations:Number(el('docCount').value),approval_status:'pending'};
  el('docFeedback').textContent='جارٍ الحفظ...';
  let result;
