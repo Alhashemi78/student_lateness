@@ -54,4 +54,51 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>showView(b.dat
 document.body.addEventListener('click',ev=>{const b=ev.target.closest('[data-action]');if(b){const {action,id}=b.dataset;if(action==='edit')editEvent(id);if(action==='delete')deleteEvent(id);if(action==='approve')openReview(id,'approved');if(action==='reject')openReview(id,'rejected');}});$('reviewForm').onsubmit=submitReview;$('cancelReview').onclick=()=>$('reviewDialog').close();$('demoBtn').onclick=enableDemo;$('endDemo').onclick=()=>syncAuth(session);
 $('authBtn').onclick=async()=>{if(session){const {error}=await db.auth.signOut();if(error)return toast(errorText(error));await syncAuth(null);}else $('authDialog').showModal();};$('closeAuth').onclick=()=>$('authDialog').close();$('authForm').onsubmit=e=>{e.preventDefault();authAction('login');};$('signup').onclick=()=>toast('تفعيل الحسابات يتم بدعوة من الإدارة فقط.');$('verifyLink').onclick=verifyLink;$('forgotPassword').onclick=async()=>{const email=$('email').value.trim();if(!$('email').checkValidity())return;$('authMessage').textContent='جاري إرسال رابط الاستعادة…';const {error}=await db.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});$('authMessage').textContent=error?errorText(error):'تم طلب رابط الاستعادة. افتحه في البريد أو ألصقه في حقل رابط التأكيد أعلاه.';};$('changePassword').onclick=async()=>{if(!session)return $('authMessage').textContent='افتح رابط الاستعادة أولًا.';const password=$('password').value;if(password.length<8)return $('authMessage').textContent='كلمة المرور من 8 أحرف على الأقل.';const {error}=await db.auth.updateUser({password});$('authMessage').textContent=error?errorText(error):'تم حفظ كلمة المرور الجديدة.';};
 $('memberForm').onsubmit=e=>{e.preventDefault();toast('تحديث الموظفين من Excel بعد مراجعة الإدارة فقط.');};$('membersList').onclick=()=>{};
+
+let pendingRoster=null;
+$('rosterFile').onchange=async ev=>{
+ pendingRoster=null;$('rosterApply').hidden=true;$('rosterPreview').textContent='';
+ if(!session||access?.role!=='admin')return toast('هذه العملية مخصصة للإدارة فقط.');
+ const file=ev.target.files?.[0];if(!file)return;
+ if(!/\\.xlsx$/i.test(file.name)||file.size>2*1024*1024)return toast('اختر ملف XLSX لا يتجاوز 2 ميغابايت.');
+ try{
+  const wb=new ExcelJS.Workbook();await wb.xlsx.load(await file.arrayBuffer());
+  const ws=wb.worksheets[0];if(!ws)throw Error('ملف Excel لا يحتوي على ورقة بيانات.');
+  const value=c=>{const v=c?.value;return String(typeof v==='object'?(v?.text||v?.result||''):v??'').trim();};
+  const header=[1,2,3].map(i=>value(ws.getRow(1).getCell(i)));
+  if(header[0]!=='اسم المعلم'||header[1]!=='البريد الإلكتروني'||header[2]!=='القسم')throw Error('ترتيب الأعمدة المطلوب: اسم المعلم، البريد الإلكتروني، القسم.');
+  const rows=[],seen=new Set();
+  ws.eachRow((row,i)=>{if(i===1)return;const name=value(row.getCell(1)),email=value(row.getCell(2)).toLowerCase(),dept=value(row.getCell(3));
+   if(!name&&!email&&!dept)return;
+   if(!name||!dept||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||email.endsWith('.invalid'))throw Error('بيانات غير مكتملة أو بريد تجريبي في الصف '+i);
+   if(seen.has(email))throw Error('بريد مكرر في الصف '+i);
+   seen.add(email);rows.push({email,display_name:name,department:dept});
+  });
+  if(!rows.length)throw Error('الملف فارغ. لن يتم إيقاف حسابات بسبب ملف فارغ.');
+  const {data:existing,error}=await db.from('school_event_access').select('email,role,display_name');
+  if(error)throw error;
+  const previous=existing.filter(x=>x.role==='staff');
+  const added=rows.filter(x=>!previous.some(p=>p.email===x.email));
+  const removed=previous.filter(x=>!seen.has(x.email));
+  pendingRoster={rows,added,removed};
+  $('rosterPreview').textContent='معاينة: '+rows.length+' معلمًا | إضافة '+added.length+' | إيقاف وصول '+removed.length+'. الأقسام موجودة في Excel؛ يجب التحقق من ربطها بالخادم قبل الاعتماد النهائي.';
+  $('rosterApply').hidden=false;
+ }catch(err){$('rosterPreview').textContent='تعذر قراءة القائمة: '+errorText(err);}
+};
+$('rosterApply').onclick=async()=>{
+ if(!pendingRoster||access?.role!=='admin'||!session)return;
+ const {rows,added,removed}=pendingRoster;
+ if(!confirm('اعتماد قائمة Excel؟ سيُضاف '+added.length+' موظفًا ويُلغى وصول '+removed.length+' موظفًا غير موجودين بالقائمة. لا يمكن اعتبار هذا إبطالًا فوريًا لكل جلسات Supabase.'))return;
+ $('rosterApply').disabled=true;
+ try{
+  const {error}=await db.from('school_event_access').upsert(rows.map(x=>({email:x.email,display_name:x.display_name,role:'staff'})),{onConflict:'email'});
+  if(error)throw error;
+  for(const member of removed){const res=await db.from('school_event_access').delete().eq('email',member.email).eq('role','staff');if(res.error)throw res.error;}
+  pendingRoster=null;$('rosterApply').hidden=true;$('rosterFile').value='';
+  $('rosterPreview').textContent='تم تحديث قائمة السماح. يتطلب إبطال الجلسات القائمة إجراءً منفصلًا على الخادم.';
+  await loadMembers();
+ }catch(err){toast('لم يكتمل التحديث؛ راجع القائمة قبل المحاولة: '+errorText(err));}
+ finally{$('rosterApply').disabled=false;}
+};
+
 if(window.Chart)Chart.defaults.font.family='Cairo';resetEventForm();renderAll();if(db){db.auth.getSession().then(({data,error})=>{if(error)toast(errorText(error));syncAuth(data.session);});db.auth.onAuthStateChange((event,s)=>{if(event==='PASSWORD_RECOVERY'){session=s;$('authDialog').showModal();$('authMessage').textContent='اكتب كلمة المرور الجديدة واضغط حفظ كلمة المرور الجديدة.';}else if(event==='SIGNED_OUT')setTimeout(()=>syncAuth(null),0);});}else toast('تعذر تحميل مكتبة Supabase. تحقق من الاتصال ثم حدّث الصفحة.');
