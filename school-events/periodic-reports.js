@@ -19,6 +19,7 @@ function reportHTML(start,end,rows,heading){
  return '<div style="direction:rtl;font-family:Cairo,Arial,sans-serif;background:#fff;color:#173b45;padding:32px;width:1050px;box-sizing:border-box"><div style="background:#123e49;color:white;padding:28px;border-radius:14px;text-align:center"><h1 style="margin:0;font-size:30px">الفعاليات المدرسية 2026–2027م</h1><h2 style="margin:12px 0 0;font-size:23px">'+escapeHTML(heading)+'</h2><p>'+escapeHTML(label(start))+' — '+escapeHTML(label(end))+'</p></div><p style="text-align:center">مدرسة النعيم الثانوية للبنين</p><div style="display:flex;gap:12px;margin:22px 0">'+[['إجمالي الفعاليات',m.count],['المعتمدة',approved.length],['قيد المراجعة',pending.length],['الأقسام',m.departments],['المشاركات',m.participations]].map(x=>'<div style="flex:1;background:#eaf4f2;padding:16px;text-align:center;border-radius:10px"><b style="font-size:24px">'+x[1]+'</b><div>'+x[0]+'</div></div>').join('')+'</div><h2>الملخص التنفيذي</h2><p>سُجلت '+m.count+' فعالية خلال الفترة المحددة، منها '+approved.length+' معتمدة و'+pending.length+' قيد المراجعة. بلغ إجمالي المشاركات المسجلة '+m.participations+' مشاركة (قد يتكرر المشارك في أكثر من فعالية).</p><h2>توزيع الفعاليات حسب القسم</h2><p>'+escapeHTML(byDept.map(x=>x[0]+' ('+x[1]+')').join(' • ')||'لا توجد فعاليات')+'</p><h2>تفاصيل الفعاليات</h2><table style="border-collapse:collapse;width:100%;font-size:13px"><thead><tr>'+['#','الفعالية','التاريخ','القسم','المسؤول','المكان','المشاركات','الحالة'].map(x=>'<th style="background:#123e49;color:white;padding:9px;border:1px solid #ddd">'+x+'</th>').join('')+'</tr></thead><tbody>'+ (tr||'<tr><td colspan="8" style="padding:20px;text-align:center">لا توجد فعاليات مسجلة في هذه الفترة</td></tr>')+'</tbody></table><p style="margin-top:32px;text-align:center;border-top:1px solid #ddd;padding-top:14px">إعداد المدير المساعد: زياد الهاشمي • تقرير تجريبي مولّد من البيانات المتاحة في النظام</p></div>';
 }
 async function downloadPeriod(start,end,heading){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end){alert('تحقق من الفترة المحددة');return;}
  const rows=periodEvents(start,end);
  const progress=$p('exportProgress');if(progress)progress.hidden=false;
  const host=document.createElement('div');host.style.cssText='position:fixed;left:-12000px;top:0;width:1050px;background:white;z-index:-1';host.innerHTML=reportHTML(start,end,rows,heading);document.body.appendChild(host);
@@ -51,7 +52,7 @@ function display(){
  const months=new Set(records().map(e=>e.start_date?.slice(0,7)).filter(Boolean));months.add(now.slice(0,7));archive.filter(r=>r.report_type==='monthly').forEach(r=>months.add(r.period_start.slice(0,7)));
  $p('monthlyReports').innerHTML=[...months].sort().reverse().slice(0,18).map(m=>{const first=m+'-01',last=dateShift(dateShift(first,32).slice(0,7)+'-01',-1),rows=periodEvents(first,last);return '<details class="periodic-month"><summary><span>'+escapeHTML(new Intl.DateTimeFormat('ar-BH',{month:'long',year:'numeric',timeZone:'Asia/Bahrain'}).format(new Date(first+'T12:00:00Z')))+'</span><span>'+rows.length+' فعالية</span></summary>'+statsHTML(rows)+eventRows(rows)+exportButton(first,last,'تقرير شهر '+m)+archive.filter(r=>r.report_type==='monthly'&&r.period_start.slice(0,7)===m).map(row).join('')+'</details>';}).join('');
  const weeks=archive.filter(r=>r.report_type!=='monthly').sort((a,b)=>b.period_start.localeCompare(a.period_start));
- $p('weeklyArchive').innerHTML=weeks.length?weeks.map(row).join(''):'<p class="muted">لا توجد روابط PDF مؤرشفة حتى الآن.</p>';
+ $p('weeklyArchive').innerHTML=weeks.length?weeks.map(row).join(''):'<p class="muted">لا توجد تقارير PDF مؤرشفة حتى الآن.</p>';
  $p('reportLinkAdmin').hidden=true;
 }
 async function refresh(){
@@ -61,6 +62,9 @@ async function refresh(){
  archive=data||[];display();
 }
 $p('periodicRefresh').onclick=refresh;
+const custom=$p('customPeriodForm');
+if(custom){custom.addEventListener('submit',e=>{e.preventDefault();const start=$p('customPeriodStart').value,end=$p('customPeriodEnd').value||start;downloadPeriod(start,end,start===end?'تقرير فعاليات يوم واحد':'تقرير الفعاليات للفترة المحددة');});
+$p('customPeriodStart').value=today();$p('customPeriodEnd').value=today();}
 $p('periodic').addEventListener('click',e=>{const b=e.target.closest('.periodic-generate');if(b)downloadPeriod(b.dataset.start,b.dataset.end,b.dataset.heading);});
 document.querySelector('[data-view="periodic"]')?.addEventListener('click',refresh);
 $p('reportLinkForm').addEventListener('submit',async ev=>{
