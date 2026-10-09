@@ -23,6 +23,7 @@ async function refreshDocs(){
   const e=events.find(x=>x.id===d.event_id);
   const card=document.createElement('article');card.className='card';
   const title=document.createElement('h3');title.textContent=e?.title||'فعالية مدرسية';card.append(title);
+  const date=document.createElement('p');date.textContent='تاريخ الفعالية: '+(e?.start_date?dateLabel(e.start_date):'غير متاح');card.append(date);
   const desc=document.createElement('p');desc.textContent=d.description;card.append(desc);
   const count=document.createElement('small');count.textContent='المشاركات الطلابية: '+d.student_participations;card.append(count);
   const path=photosByEvent.get(d.event_id);
@@ -76,6 +77,42 @@ el('docForm').addEventListener('submit',async ev=>{
   if(saved.error)return el('docFeedback').textContent='رفعت الصورة لكن تعذر ربطها بالفعالية: '+errorText(saved.error);
  }
  el('docFeedback').textContent='تم حفظ التوثيق وإرساله للمراجعة.';el('docForm').reset();await refreshDocs();
+});
+el('exportAchievementsPdf').addEventListener('click',async()=>{
+ const status=el('achievementsPdfStatus'),button=el('exportAchievementsPdf');
+ if(!session||!access||demo)return status.textContent='يلزم تسجيل الدخول بحساب مصرح له.';
+ const approved=docs.filter(d=>d.approval_status==='approved'&&events.some(e=>e.id===d.event_id));
+ if(!approved.length)return status.textContent='لا توجد إنجازات معتمدة لتصديرها.';
+ if(!window.html2canvas||!window.jspdf?.jsPDF)return status.textContent='تعذر تحميل أدوات PDF، حاول إعادة فتح الصفحة.';
+ button.disabled=true;status.textContent='جارٍ تجهيز التقرير والصور...';
+ const host=document.createElement('div');host.dir='rtl';host.style.cssText='position:fixed;left:-20000px;top:0;width:760px;background:white;color:#183b44;padding:32px;font-family:Cairo,Arial,sans-serif;box-sizing:border-box';
+ document.body.append(host);
+ try{
+  const heading=document.createElement('h1');heading.textContent='الفعاليات المدرسية – العام الدراسي 2026–2027م';heading.style.cssText='text-align:center;font-size:27px';host.append(heading);
+  const subtitle=document.createElement('h2');subtitle.textContent='تقرير توثيق الإنجازات المعتمدة';subtitle.style.textAlign='center';host.append(subtitle);
+  const ordered=approved.slice().sort((a,b)=>(events.find(e=>e.id===a.event_id)?.start_date||'').localeCompare(events.find(e=>e.id===b.event_id)?.start_date||''));
+  for(const [i,d] of ordered.entries()){
+   const e=events.find(x=>x.id===d.event_id);const section=document.createElement('section');section.style.cssText='border:1px solid #d3e1e1;border-radius:12px;padding:18px;margin:20px 0;break-inside:avoid';
+   const title=document.createElement('h2');title.textContent=(i+1)+'. '+e.title;title.style.margin='0 0 8px';section.append(title);
+   for(const line of ['تاريخ الفعالية: '+dateLabel(e.start_date),'القسم: '+(e.department||'—'),'المسؤول: '+(e.employee||'—'),'عدد المشاركات الطلابية: '+d.student_participations,'وصف التنفيذ والنتائج: '+d.description]){const p=document.createElement('p');p.textContent=line;p.style.cssText='margin:8px 0;white-space:pre-wrap';section.append(p);}
+   const {data:photos,error:photoError}=await db.from('school_event_photos').select('storage_path').eq('event_id',d.event_id).order('created_at',{ascending:false}).limit(1);
+   if(photoError)throw photoError;
+   if(photos?.length){const signed=await db.storage.from('school-event-private').createSignedUrl(photos[0].storage_path,300);if(signed.error)throw signed.error;
+    const resp=await fetch(signed.data.signedUrl);if(!resp.ok)throw Error('تعذر تحميل صورة '+e.title);
+    const blob=await resp.blob();const src=URL.createObjectURL(blob);const img=document.createElement('img');img.src=src;img.style.cssText='display:block;max-width:100%;max-height:380px;object-fit:contain;margin:14px auto;border-radius:9px';section.append(img);
+    await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('تعذر قراءة صورة '+e.title));});URL.revokeObjectURL(src);
+   }host.append(section);
+  }
+  const footer=document.createElement('p');footer.textContent='إعداد المدير المساعد: زياد الهاشمي';footer.style.cssText='text-align:center;font-weight:bold;margin:30px 0';host.append(footer);
+  await document.fonts.ready;
+  const canvas=await html2canvas(host,{scale:1.4,backgroundColor:'#ffffff',useCORS:true,logging:false});
+  const pdf=new jspdf.jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const pageW=210,pageH=297,margin=10,usableW=pageW-2*margin,usableH=pageH-2*margin;
+  const pagePx=Math.floor(canvas.width*usableH/usableW);let page=0;
+  for(let y=0;y<canvas.height;y+=pagePx){const slice=document.createElement('canvas');slice.width=canvas.width;slice.height=Math.min(pagePx,canvas.height-y);slice.getContext('2d').drawImage(canvas,0,y,canvas.width,slice.height,0,0,canvas.width,slice.height);if(page++)pdf.addPage();pdf.addImage(slice.toDataURL('image/jpeg',0.87),'JPEG',margin,margin,usableW,slice.height*usableW/slice.width);}
+  pdf.save('توثيق-الإنجازات-المعتمدة.pdf');status.textContent='تم تجهيز تقرير PDF بالصور والتواريخ.';
+ }catch(err){status.textContent='تعذر تصدير التقرير: '+errorText(err);}
+ finally{host.remove();button.disabled=false;}
 });
 el('docRefresh').onclick=refreshDocs;
 el('docList').addEventListener('click',async ev=>{
