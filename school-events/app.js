@@ -77,6 +77,8 @@ $('rosterFile').onchange=async ev=>{
   if(!rows.length)throw Error('الملف فارغ. لن يتم إيقاف حسابات بسبب ملف فارغ.');
   const {data:existing,error}=await db.from('school_event_access').select('email,role,display_name');
   if(error)throw error;
+  const adminEmails=new Set(existing.filter(x=>x.role==='admin').map(x=>x.email));
+  if(rows.some(x=>adminEmails.has(x.email)))throw Error('تحتوي القائمة على حساب إداري. لا يمكن تغيير صلاحيات الإدارة من ملف المعلمين.');
   const previous=existing.filter(x=>x.role==='staff');
   const added=rows.filter(x=>!previous.some(p=>p.email===x.email));
   const removed=previous.filter(x=>!seen.has(x.email));
