@@ -33,55 +33,94 @@ async function refreshDocs(){
   gallery.append(card);
  }
 
- const pendingDocs=[];
+ const pendingDocs=docs.filter(d=>d.approval_status!=='approved');
  el('docList').innerHTML=pendingDocs.length?pendingDocs.map(d=>{
   const e=events.find(x=>x.id===d.event_id);
   return '<article class="event-card"><div><h3>'+safe(e?.title||'فعالية')+'</h3><p>'+safe(d.description)+'</p><small>المشاركات الطلابية: '+Number(d.student_participations)+' · '+safe(({pending:'قيد المراجعة',approved:'معتمد',rejected:'مرفوض'})[d.approval_status])+'</small>'+(d.review_note?'<p>'+safe(d.review_note)+'</p>':'')+'</div>'+(isAdmin()&&d.approval_status==='pending'?'<div class="actions"><button type="button" class="btn primary" data-doc-review="approved" data-doc-id="'+safe(d.event_id)+'">اعتماد</button><button type="button" class="btn outline" data-doc-review="rejected" data-doc-id="'+safe(d.event_id)+'">رفض</button></div>':'')+'</article>';
  }).join(''):'<p class="muted">لا توجد توثيقات قيد المراجعة أو مرفوضة. التوثيقات المعتمدة تظهر أعلاه مع صورها.</p>';
 }
-el('docEvent').addEventListener('change',()=>{const d=docs.find(x=>x.event_id===el('docEvent').value);const mode=el('docEditMode');if(mode)mode.value=d?'details':'details_photo';if(d){el('docDescription').value=d.description||'';el('docCount').value=d.student_participations??0;}else{el('docDescription').value='';el('docCount').value='';}mode?.dispatchEvent(new Event('change'));});
-el('docEditMode')?.addEventListener('change',()=>{const mode=el('docEditMode').value,photo=el('docPhoto'),desc=el('docDescription'),count=el('docCount');photo.disabled=mode==='details';photo.required=mode==='photo';desc.required=mode!=='photo';count.required=mode!=='photo';el('docModeHint').textContent=mode==='photo'?'سيتم عرض الصورة الجديدة بدل السابقة دون تغيير بيانات الفعالية.':mode==='details'?'سيتم تحديث الوصف والمشاركات مع الاحتفاظ بالصورة الحالية.':'سيتم تحديث البيانات وإضافة الصورة الجديدة إن اخترتها.';});
-el('docForm').addEventListener('submit',async ev=>{
- ev.preventDefault();
- if(!session||!access||demo)return el('docFeedback').textContent='سجّل الدخول أولًا؛ المعاينة لا تحفظ البيانات.';
- const eventId=el('docEvent').value,evt=events.find(e=>e.id===eventId);
- if(!evt||evt.status!=='approved'||(!isAdmin()&&evt.owner_id!==session.user.id))return el('docFeedback').textContent='لا تملك صلاحية توثيق هذه الفعالية.';
- const existing=docs.find(d=>d.event_id===eventId);
- const mode=el('docEditMode')?.value||'details_photo';
- if(existing?.approval_status==='approved'&&mode==='photo'){
-  const image=el('docPhoto').files?.[0];
-  if(!image)return el('docFeedback').textContent='اختر الصورة البديلة أولًا.';
-  if(evt.owner_id!==session.user.id)return el('docFeedback').textContent='إرفاق صورة لتوثيق معتمد متاح لصاحب الفعالية فقط حاليًا.';
-  if(!['image/jpeg','image/png','image/webp'].includes(image.type)||image.size>2097152||image.size<1)return el('docFeedback').textContent='اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 2 ميغابايت.';
-  el('docFeedback').textContent='جارٍ إرفاق الصورة بالتوثيق المعتمد...';
-  const ext=image.type==='image/png'?'png':image.type==='image/webp'?'webp':'jpg';
-  const path=eventId+'/'+session.user.id+'/'+crypto.randomUUID()+'.'+ext;
-  const uploaded=await db.storage.from('school-event-private').upload(path,image,{contentType:image.type,upsert:false});
-  if(uploaded.error)return el('docFeedback').textContent='تعذر رفع الصورة: '+errorText(uploaded.error);
-  const saved=await db.from('school_event_photos').insert({event_id:eventId,owner_id:session.user.id,storage_path:path});
-  if(saved.error){await db.storage.from('school-event-private').remove([path]);return el('docFeedback').textContent='تعذر ربط الصورة بالتوثيق: '+errorText(saved.error);}
-  el('docFeedback').textContent='تم تحديث صورة الفعالية بنجاح.';el('docForm').reset();await refreshDocs();return;
- }
- if(mode==='photo'&&!existing)return el('docFeedback').textContent='اختر توثيقًا موجودًا لاستبدال صورته.';
- const payload={event_id:eventId,owner_id:evt.owner_id,description:el('docDescription').value.trim(),student_participations:Number(el('docCount').value),approval_status:'approved'};
- el('docFeedback').textContent='جارٍ الحفظ...';
- let result;
- if(existing)result=await db.from('school_event_documentation').update({description:payload.description,student_participations:payload.student_participations,approval_status:'approved',review_note:''}).eq('event_id',eventId);
- else result=await db.from('school_event_documentation').insert(payload);
- if(result.error)return el('docFeedback').textContent=errorText(result.error);
-
- const image=mode==='details'?null:el('docPhoto').files?.[0];
- if(image){
-  if(!['image/jpeg','image/png','image/webp'].includes(image.type)||image.size>2097152||image.size<1)return el('docFeedback').textContent='حُفظ التوثيق، لكن الصورة يجب أن تكون JPG أو PNG أو WebP وأقل من 2 ميغابايت.';
-  const ext=image.type==='image/png'?'png':image.type==='image/webp'?'webp':'jpg';
-  const path=eventId+'/'+session.user.id+'/'+crypto.randomUUID()+'.'+ext;
-  const uploaded=await db.storage.from('school-event-private').upload(path,image,{contentType:image.type,upsert:false});
-  if(uploaded.error)return el('docFeedback').textContent='حُفظ التوثيق، لكن رفع الصورة لم ينجح: '+errorText(uploaded.error);
-  const saved=await db.from('school_event_photos').insert({event_id:eventId,owner_id:session.user.id,storage_path:path});
-  if(saved.error)return el('docFeedback').textContent='رفعت الصورة لكن تعذر ربطها بالفعالية: '+errorText(saved.error);
- }
- el('docFeedback').textContent='تم حفظ التوثيق وعرضه مباشرة دون انتظار موافقة.';el('docForm').reset();await refreshDocs();
+const form=el('docForm'),saveButton=form.querySelector('[type="submit"]');
+let saving=false;
+function syncDocMode(){
+ const mode=el('docEditMode').value,photo=el('docPhoto'),desc=el('docDescription'),count=el('docCount');
+ photo.disabled=mode==='details';photo.required=mode==='photo';
+ desc.disabled=count.disabled=mode==='photo';desc.required=count.required=mode!=='photo';
+ el('docModeHint').textContent=mode==='photo'?'سيتم تحديث الصورة فقط مع الاحتفاظ ببيانات التوثيق وحالة مراجعته.':mode==='details'?'سيتم تحديث الوصف والمشاركات مع الاحتفاظ بالصورة وحالة المراجعة.':'أرفق الصورة إن رغبت. التوثيق الجديد من الموظف يُرسل للمراجعة، وتعديل التوثيق الموجود يحتفظ بحالته.';
+}
+el('docEvent').addEventListener('change',()=>{
+ const d=docs.find(x=>x.event_id===el('docEvent').value);
+ el('docEditMode').value='details_photo';el('docPhoto').value='';
+ el('docDescription').value=d?.description||'';el('docCount').value=d?.student_participations??'';
+ syncDocMode();el('docFeedback').textContent='';
 });
+el('docEditMode').addEventListener('change',syncDocMode);
+form.addEventListener('invalid',ev=>{
+ const names={docEvent:'الفعالية',docDescription:'وصف التنفيذ (10 أحرف على الأقل)',docCount:'عدد المشاركات',docPhoto:'الصورة'};
+ el('docFeedback').textContent='تحقق من حقل '+(names[ev.target.id]||'البيانات المطلوبة')+'.';
+},true);
+form.addEventListener('submit',async ev=>{
+ ev.preventDefault();if(saving)return;
+ const feedback=el('docFeedback');
+ if(!session||!access||demo)return feedback.textContent='سجّل الدخول أولًا؛ المعاينة لا تحفظ البيانات.';
+ const eventId=el('docEvent').value,evt=events.find(e=>e.id===eventId);
+ if(!evt||evt.status!=='approved'||evt.start_date>today()||(!isAdmin()&&evt.owner_id!==session.user.id))return feedback.textContent='لا تملك صلاحية توثيق هذه الفعالية أو لم يبدأ موعدها بعد.';
+ const mode=el('docEditMode').value,image=mode==='details'?null:el('docPhoto').files?.[0];
+ if(mode==='photo'&&!image)return feedback.textContent='اختر الصورة البديلة أولًا.';
+ if(image&&(!['image/jpeg','image/png','image/webp'].includes(image.type)||image.size>2097152||image.size<1))return feedback.textContent='اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 2 ميغابايت. لم يتم حفظ أي تغيير.';
+ const description=el('docDescription').value.trim(),count=Number(el('docCount').value);
+ if(mode!=='photo'&&(description.length<10||description.length>3000||!el('docCount').value||!Number.isInteger(count)||count<0||count>100000))return feedback.textContent='اكتب وصفًا من 10 إلى 3000 حرف وعدد مشاركات صحيحًا من 0 إلى 100000.';
+ const accountId=session.user.id;
+ const checkAccount=()=>{if(session?.user?.id!==accountId||!access||demo)throw Error('تغيّر حساب الدخول؛ أعد فتح التوثيق قبل المحاولة.');};
+ saving=true;saveButton.disabled=true;form.setAttribute('aria-busy','true');
+ el('docEvent').disabled=el('docEditMode').disabled=el('docRefresh').disabled=true;
+ let detailsSaved=false,stage='قراءة التوثيق';
+ try{
+  feedback.textContent='جارٍ التحقق من التوثيق...';
+  // Read the saved row on every attempt: a previous attempt may have saved details before an upload failed.
+  const lookup=await db.from('school_event_documentation').select('event_id,owner_id,description,student_participations,approval_status,review_note,created_at').eq('event_id',eventId).maybeSingle();
+  if(lookup.error)throw lookup.error;checkAccount();
+  let existing=lookup.data;
+  if(mode==='photo'&&!existing)throw Error('اختر توثيقًا موجودًا لاستبدال صورته.');
+  if(mode==='photo'&&existing.approval_status==='approved'&&evt.owner_id!==accountId)throw Error('إرفاق صورة لتوثيق معتمد متاح لصاحب الفعالية فقط حاليًا.');
+  if(mode!=='photo'){
+   stage='حفظ بيانات التوثيق';feedback.textContent='جارٍ حفظ بيانات التوثيق...';
+   // Editing content must never clear a review note or change a review decision.
+   const changes={description,student_participations:count};
+   const payload={...changes,event_id:eventId,owner_id:evt.owner_id,approval_status:isAdmin()?'approved':'pending'};
+   const query=existing?db.from('school_event_documentation').update(changes).eq('event_id',eventId):db.from('school_event_documentation').insert(payload);
+   const result=await query.select('event_id');
+   if(result.error)throw result.error;
+   if(!result.data?.length)throw Error('لم يتم حفظ التوثيق. تحقق من صلاحيات الحساب ثم حدّث السجل.');
+   detailsSaved=true;existing=existing?{...existing,...changes}:payload;
+   docs=docs.filter(d=>d.event_id!==eventId).concat(existing);checkAccount();
+  }
+  if(image){
+   stage='رفع الصورة';feedback.textContent='جارٍ رفع الصورة...';
+   const ext=image.type==='image/png'?'png':image.type==='image/webp'?'webp':'jpg';
+   const path=eventId+'/'+accountId+'/'+crypto.randomUUID()+'.'+ext;
+   const uploaded=await db.storage.from('school-event-private').upload(path,image,{contentType:image.type,upsert:false});
+   if(uploaded.error)throw uploaded.error;checkAccount();
+   stage='ربط الصورة بالتوثيق';
+   const linked=await db.from('school_event_photos').insert({event_id:eventId,owner_id:accountId,storage_path:path});
+   if(linked.error){
+    // Remove only the file from this failed attempt, never a previous event photo.
+    try{await db.storage.from('school-event-private').remove([path]);}catch(_){}
+    throw linked.error;
+   }
+  }
+  checkAccount();
+  const success=mode==='photo'?'تم تحديث صورة الفعالية بنجاح.':existing.approval_status==='pending'?'تم حفظ التوثيق'+(image?' والصورة':'')+' وإرساله للمراجعة.':existing.approval_status==='rejected'?'تم حفظ التعديلات'+(image?' والصورة':'')+'. التوثيق ما زال مرفوضًا ويحتاج مراجعة الإدارة.':'تم حفظ التوثيق'+(image?' والصورة':'')+' مع الاحتفاظ بالاعتماد.';
+  form.reset();syncDocMode();feedback.textContent=success;
+  try{await refreshDocs();}catch(err){feedback.textContent=success+' تعذر تحديث العرض: '+errorText(err);}
+ }catch(err){
+  const detail=String(err?.message||err).includes('Review is admin-only')?'قرار الاعتماد مخصص للإدارة. لم يكتمل الحفظ؛ تحقق من صلاحيات التوثيق.':errorText(err);
+  feedback.textContent=(detailsSaved?'حُفظت بيانات التوثيق، لكن تعذر '+stage+'. يمكنك إعادة المحاولة بنفس الصورة. ':'تعذر '+stage+': ')+detail;
+ }finally{
+  saving=false;saveButton.disabled=false;form.removeAttribute('aria-busy');
+  el('docEvent').disabled=el('docEditMode').disabled=el('docRefresh').disabled=false;
+ }
+});
+syncDocMode();
 el('exportAchievementsPdf').addEventListener('click',async()=>{
  const status=el('achievementsPdfStatus'),button=el('exportAchievementsPdf');
  if(!session||!access||demo)return status.textContent='يلزم تسجيل الدخول بحساب مصرح له.';
@@ -129,7 +168,8 @@ el('exportAchievementsPdf').addEventListener('click',async()=>{
  }catch(err){status.textContent='تعذر تصدير التقرير: '+errorText(err);}
  finally{host.remove();button.disabled=false;}
 });
-el('docRefresh').onclick=refreshDocs;
+async function reloadDocs(){try{await refreshDocs();}catch(err){el('docFeedback').textContent='تعذر تحميل التوثيق: '+errorText(err);}}
+el('docRefresh').onclick=reloadDocs;
 el('docList').addEventListener('click',async ev=>{
  const b=ev.target.closest('[data-doc-review]');if(!b||!isAdmin()||!session)return;
  const status=b.dataset.docReview;
@@ -147,5 +187,5 @@ el('docList').addEventListener('click',async ev=>{
  const {error}=await db.from('school_event_documentation').update({approval_status:status,review_note:note||''}).eq('event_id',b.dataset.docId);
  if(error)el('docFeedback').textContent=errorText(error);else await refreshDocs();
 });
-document.querySelector('[data-view="documentation"]')?.addEventListener('click',()=>{refreshDocs();});
+document.querySelector('[data-view="documentation"]')?.addEventListener('click',()=>{if(!saving)reloadDocs();});
 })();
