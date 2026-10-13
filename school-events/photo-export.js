@@ -58,11 +58,7 @@
         checkAccount(id);
         const photo = selected[i], event = events.find(row => row.id === photo.event_id);
         message.textContent = `جارٍ تجهيز الصورة ${offset + i + 1} من ${queue.length}…`;
-        const { data, error } = await db.storage.from('school-event-private').createSignedUrl(photo.storage_path, 300);
-        if (error) throw error;
-        const response = await fetch(data.signedUrl, { signal: AbortSignal.timeout(45000) });
-        if (!response.ok) throw Error('تعذر تحميل إحدى الصور. لم يتم تخطيها؛ أعد المحاولة.');
-        const blob = await response.blob();
+        const blob = await window.eventPhotoBlob(photo.storage_path);
         const ext = ({ 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp' })[blob.type.split(';')[0]];
         if (!ext || !blob.size) throw Error('إحدى الملفات ليست صورة مدعومة. لم يتم تخطيها.');
         const name = `${String(offset + i + 1).padStart(4,'0')}_${safeName(event?.title || photo.event_id)}.${ext}`;
@@ -70,7 +66,7 @@
         index.push({ file: name, event_id: photo.event_id, title: event?.title || '', event_date: event?.start_date || '', uploaded_at: photo.created_at });
       }
       zip.file('images-index.json', JSON.stringify(index, null, 2));
-      zip.file('اقرأني.txt', 'هذه الصور قُرئت بصلاحيات الحساب المسجل من Supabase. قد تشمل صورًا أقدم استُبدلت في الواجهة. يربط images-index.json كل صورة بفعاليتها. لا يتضمن الأرشيف رموز دخول أو روابط موقعة.');
+      zip.file('اقرأني.txt', 'هذه الصور قُرئت بصلاحيات الحساب المسجل من Cloudinary عبر خدمة المدرسة الآمنة. قد تشمل صورًا أقدم استُبدلت في الواجهة. يربط images-index.json كل صورة بفعاليتها. لا يتضمن الأرشيف رموز دخول أو روابط موقعة.');
       const archive = await zip.generateAsync({ type:'blob', compression:'STORE' });
       checkAccount(id);
       const part = Math.floor(offset / batchSize) + 1, url = URL.createObjectURL(archive);
