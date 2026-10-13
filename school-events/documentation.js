@@ -148,7 +148,7 @@ form.addEventListener('submit',async ev=>{
   form.reset();syncDocMode();feedback.textContent=success;
   try{await refreshDocs();}catch(err){feedback.textContent=success+' تعذر تحديث العرض: '+errorText(err);}
  }catch(err){
-  const detail=String(err?.message||err).includes('Review is admin-only')?'قرار الاعتماد مخصص للإدارة. لم يكتمل الحفظ؛ تحقق من صلاحيات التوثيق.':errorText(err);
+  const detail=String(err?.message||err).includes('Review is admin-only')?'تعذر حفظ التوثيق؛ حدّث الصفحة وأعد المحاولة. إذا استمر الخطأ، تواصل مع مسؤول النظام.':errorText(err);
   feedback.textContent=(detailsSaved?'حُفظت بيانات التوثيق، لكن تعذر '+stage+'. يمكنك إعادة المحاولة بنفس الصورة. ':'تعذر '+stage+': ')+detail;
  }finally{
   saving=false;saveButton.disabled=false;form.removeAttribute('aria-busy');
