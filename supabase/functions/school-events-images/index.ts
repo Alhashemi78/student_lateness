@@ -10,7 +10,9 @@ async function rest(path:string,init:RequestInit={},auth?:string){
  const key=auth?env('SUPABASE_ANON_KEY'):env('SUPABASE_SERVICE_ROLE_KEY');
  const response=await fetch(env('SUPABASE_URL')+'/rest/v1/'+path,{...init,headers:{apikey:key,Authorization:auth||'Bearer '+key,'Content-Type':'application/json',...init.headers}});
  if(!response.ok)throw Error('تعذر الوصول إلى سجل الصور ('+response.status+')');
- return response.status===204?null:response.json();
+ if(response.status===204)return null;
+ const body=await response.text();
+ return body.trim()?JSON.parse(body):null;
 }
 async function cloudImage(photo:any){
  const path='v'+photo.cloudinary_version+'/'+photo.cloudinary_public_id+'.'+photo.cloudinary_format;
