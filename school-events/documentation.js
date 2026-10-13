@@ -5,6 +5,16 @@ const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'
 const isAdmin=()=>access?.role==='admin';
 let docs=[];
 
+window.eventPhotoBlob=async function(path){
+ const {data,error}=await db.functions.invoke('school-events-images',{body:{action:'read',storage_path:path}});
+ if(error)throw Error('تعذر تحميل الصورة الخاصة. تحقق من صلاحيات الحساب.');
+ if(!(data instanceof Blob)||!data.type.startsWith('image/'))throw Error('صورة غير صالحة');
+ return data;
+};
+const photoUrls=new Set();
+window.addEventListener('pagehide',()=>photoUrls.forEach(u=>URL.revokeObjectURL(u)));
+
+
 async function preparePhoto(file){
  if(!file.size||file.size>25*1024*1024)throw Error('اختر صورة لا تتجاوز 25 ميغابايت.');
  const url=URL.createObjectURL(file);
@@ -36,7 +46,7 @@ async function refreshDocs(){
  const {data:photos,error:photoError}=await db.from('school_event_photos').select('event_id,storage_path').order('created_at',{ascending:false});
  const photosByEvent=new Map();
  for(const p of photos||[])if(!photosByEvent.has(p.event_id))photosByEvent.set(p.event_id,p.storage_path);
- gallery.replaceChildren();
+ photoUrls.forEach(u=>URL.revokeObjectURL(u));photoUrls.clear();gallery.replaceChildren();
  if(photoError){gallery.textContent='تعذر تحميل صور الإنجازات: '+errorText(photoError);}
  else if(!approved.length){gallery.textContent='لا توجد إنجازات موثقة بعد.';}
  else for(const d of approved){
@@ -47,8 +57,10 @@ async function refreshDocs(){
   const desc=document.createElement('p');desc.textContent=d.description;card.append(desc);
   const count=document.createElement('small');count.textContent='المشاركات الطلابية: '+d.student_participations;card.append(count);
   const path=photosByEvent.get(d.event_id);
-  if(path){const signed=await db.storage.from('school-event-private').createSignedUrl(path,120);
-   if(!signed.error){const img=document.createElement('img');img.src=signed.data.signedUrl;img.alt='صورة توثيق '+title.textContent;img.loading='lazy';img.style.cssText='width:100%;max-height:260px;object-fit:cover;border-radius:12px;margin-top:12px';card.prepend(img);}
+  if(path){
+   try{const blob=await window.eventPhotoBlob(path);const src=URL.createObjectURL(blob);photoUrls.add(src);
+    const img=document.createElement('img');img.src=src;img.alt='صورة توثيق '+title.textContent;img.loading='lazy';img.style.cssText='width:100%;max-height:260px;object-fit:cover;border-radius:12px;margin-top:12px';card.prepend(img);
+   }catch(_){const note=document.createElement('p');note.textContent='تعذر تحميل صورة هذه الفعالية.';card.append(note);}
   }
   gallery.append(card);
  }
@@ -117,17 +129,16 @@ form.addEventListener('submit',async ev=>{
   }
   if(image){
    stage='رفع الصورة';feedback.textContent='جارٍ رفع الصورة...';
-   const ext='jpg';
-   const path=eventId+'/'+accountId+'/'+crypto.randomUUID()+'.'+ext;
-   const uploaded=await db.storage.from('school-event-private').upload(path,preparedImage,{contentType:'image/jpeg',upsert:false});
-   if(uploaded.error)throw uploaded.error;checkAccount();
-   stage='ربط الصورة بالتوثيق';
-   const linked=await db.from('school_event_photos').insert({event_id:eventId,owner_id:accountId,storage_path:path});
-   if(linked.error){
-    // Remove only the file from this failed attempt, never a previous event photo.
-    try{await db.storage.from('school-event-private').remove([path]);}catch(_){}
-    throw linked.error;
+   const requestId=crypto.randomUUID();
+   const uploadBody=new FormData();uploadBody.set('file',preparedImage,'photo.jpg');uploadBody.set('event_id',eventId);uploadBody.set('request_id',requestId);
+   const uploaded=await db.functions.invoke('school-events-images',{body:uploadBody});
+   if(uploaded.error){
+    let message='تعذر رفع الصورة إلى Cloudinary. أعد المحاولة.';
+    try{const body=await uploaded.error.context.json();message=body.error||message;}catch(_){}
+    throw Error(message);
    }
+   if(!uploaded.data?.storage_path)throw Error('لم يتم تأكيد حفظ الصورة.');
+   checkAccount();
   }
   checkAccount();
   const success=mode==='photo'?'تم تحديث صورة الفعالية بنجاح.':existing.approval_status==='pending'?'تم حفظ التوثيق'+(image?' والصورة':'')+' وإرساله للمراجعة.':existing.approval_status==='rejected'?'تم حفظ التعديلات'+(image?' والصورة':'')+'. التوثيق ما زال مرفوضًا ويحتاج مراجعة الإدارة.':'تم حفظ التوثيق'+(image?' والصورة':'')+' مع الاحتفاظ بالاعتماد.';
@@ -166,10 +177,7 @@ el('exportAchievementsPdf').addEventListener('click',async()=>{
    if(photoError)throw photoError;
    if(photos?.length){
     try{
-     const signed=await db.storage.from('school-event-private').createSignedUrl(photos[0].storage_path,300);
-     if(signed.error)throw signed.error;
-     const resp=await fetch(signed.data.signedUrl);if(!resp.ok)throw Error('تعذر تحميل الصورة');
-     const blob=await resp.blob();if(!blob.type.startsWith('image/'))throw Error('ملف الصورة غير صالح');
+     const blob=await window.eventPhotoBlob(photos[0].storage_path);
      const src=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('تعذر قراءة الصورة'));reader.readAsDataURL(blob);});
      const img=document.createElement('img');img.alt='صورة '+e.title;img.style.cssText='width:195px;height:155px;object-fit:contain;background:#f3f7f7;border:1px solid #d3e1e1;border-radius:10px;flex:none';
      await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('تعذر تحميل الصورة'));img.src=src;});
