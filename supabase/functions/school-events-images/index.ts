@@ -20,7 +20,7 @@ async function cloudImage(photo:any){
 }
 async function upload(file:Blob,pid:string){
  const ts=String(Math.floor(Date.now()/1000));
- const params:any={overwrite:'false',public_id:pid,timestamp:ts,type:'authenticated'};
+ const params:any={asset_folder:'الفعاليات المدرسية 2026-2027',overwrite:'false',public_id:pid,timestamp:ts,type:'authenticated'};
  const signature=hex(await digest(Object.keys(params).sort().map(k=>k+'='+params[k]).join('&')+env('CLOUDINARY_API_SECRET')));
  const form=new FormData();for(const[k,v]of Object.entries(params))form.set(k,String(v));
  form.set('api_key',apiKey);form.set('signature',signature);form.set('file',file,'photo.jpg');
