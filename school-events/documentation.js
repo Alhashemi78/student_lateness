@@ -8,8 +8,11 @@ let docs=[];
 window.eventPhotoBlob=async function(path){
  const {data,error}=await db.functions.invoke('school-events-images',{body:{action:'read',storage_path:path}});
  if(error)throw Error('تعذر تحميل الصورة الخاصة. تحقق من صلاحيات الحساب.');
- if(!(data instanceof Blob)||!data.type.startsWith('image/'))throw Error('صورة غير صالحة');
- return data;
+ if(!(data instanceof Blob)||!data.size)throw Error('صورة غير صالحة');
+ const bytes=new Uint8Array(await data.slice(0,12).arrayBuffer());
+ const type=bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80?'image/png':bytes[0]===82&&bytes[8]===87?'image/webp':null;
+ if(!type)throw Error('صورة غير صالحة');
+ return new Blob([data],{type});
 };
 const photoUrls=new Set();
 window.addEventListener('pagehide',()=>photoUrls.forEach(u=>URL.revokeObjectURL(u)));
